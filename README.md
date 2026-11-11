@@ -6,9 +6,9 @@ A job-hunt pipeline that runs on your own laptop, one command per stage.
 
 ### What you need
 
-- A Mac with about 5 GB free, and your Mac password
+- A Mac or a Windows PC with about 5 GB free, and your computer's password. On Windows, read [Windows](#windows) first.
 - [Claude Code](https://claude.com/claude-code), to run the setup for you
-- A **Claude API key** from https://console.anthropic.com (each tailored resume costs roughly 10–15 cents)
+- A **Claude API key** from https://console.anthropic.com, with a few dollars of credit added (the key won't work without it; each tailored resume costs roughly 10–15 cents)
 - A **GitHub** account
 - A **Notion** account, as owner of the workspace you'll use
 - Your **master resume** (everything you've ever done, any format) and a **model resume** (one page, in the look you want)
@@ -128,7 +128,64 @@ The columns it makes:
 | Resume Match Report | Text | The pipeline fills it in. |
 | Date Applied, Notes | Date, Text | For you. The pipeline ignores them. |
 
+## Windows
+
+Everything works the same on Windows; only the commands differ. Use **PowerShell**, and reopen it after installing anything so new commands are found. These Windows steps are new: if one doesn't work on your PC, please open an issue on this repo.
+
+**Before Claude Code:** Claude Code on Windows needs Git, so install Git first, then [Claude Code](https://claude.com/claude-code):
+
+```powershell
+winget install --id Git.Git -e
+```
+
+Then follow [Then let Claude Code set you up](#then-let-claude-code-set-you-up). The setup prompt handles Windows.
+
+**Setting up by hand on Windows**
+
+1. Tools:
+
+   ```powershell
+   winget install --id Python.Python.3.12 -e
+   winget install --id GitHub.cli -e
+   winget install --id MiKTeX.MiKTeX -e
+   gh auth login
+   ```
+
+   Then open **MiKTeX Console** → **Settings** and choose **Always install missing packages on-the-fly**, so LaTeX fetches what your resume needs without stopping to ask.
+
+2. Your resume repo:
+
+   ```powershell
+   mkdir -Force $HOME\Repos; cd $HOME\Repos
+   git clone https://github.com/YOUR-USERNAME/YOUR-REPO.git
+   cd YOUR-REPO
+   py -m venv venv
+   .\venv\Scripts\pip install git+https://github.com/happyndikumana/job-pipeline.git
+   .\venv\Scripts\playwright install chromium
+   .\venv\Scripts\job-pipeline init
+   ```
+
+3. Steps 3–5 of [Set up by hand](#set-up-by-hand) are the same, with these swaps: `copy .env.example .env`, `notepad .env`, and `.\venv\Scripts\job-pipeline notion --page "PASTE-THE-PAGE-LINK"`.
+
+**Using it on Windows**
+
+```powershell
+cd $HOME\Repos\YOUR-REPO
+git checkout main; git pull
+.\venv\Scripts\job-pipeline tailor
+```
+
+The options are the same as on a Mac.
+
+**Updating on Windows**
+
+```powershell
+.\venv\Scripts\pip install --force-reinstall --no-deps -r requirements.txt
+```
+
 ## Using it
+
+The commands below are for a Mac; on Windows, see [Windows](#windows).
 
 1. Add jobs to your tracker: **Company**, **Role Title** and **Job Link**. Leave Resume Version empty.
 2. Run:

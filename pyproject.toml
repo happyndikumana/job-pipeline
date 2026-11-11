@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "job-pipeline"
-version = "1.1.0"
+version = "1.1.1"
 description = "Job hunt pipeline: tailor a one-page LaTeX resume to each job in a Notion tracker, using Claude."
 readme = "README.md"
 requires-python = ">=3.9"

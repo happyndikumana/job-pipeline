@@ -23,6 +23,11 @@ def usage():
 
 
 def main():
+    # Windows consoles can't show every character (arrows, bullets); print a
+    # stand-in instead of crashing.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     args = sys.argv[1:]
     if not args or args[0] in ("-h", "--help"):
         usage()

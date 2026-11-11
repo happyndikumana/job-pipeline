@@ -108,7 +108,7 @@ def check_config(account: str = ""):
         print(f"Error: {REPO_DIR} is missing: {', '.join(missing_files)}")
         print("Run job-pipeline tailor inside your resume folder (job-pipeline init creates the starter files).")
         sys.exit(1)
-    if "<FILL IN" in SYSTEM_PROMPT_FILE.read_text():
+    if "<FILL IN" in SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"):
         print("Error: prompts/system.txt still has <FILL IN ...> placeholders. Finish it first.")
         sys.exit(1)
 
@@ -405,9 +405,9 @@ def tailor_resume(
     """Use Claude to generate a tailored LaTeX resume."""
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    system_prompt = SYSTEM_PROMPT_FILE.read_text()
+    system_prompt = SYSTEM_PROMPT_FILE.read_text(encoding="utf-8")
 
-    user_prompt_template = USER_PROMPT_FILE.read_text()
+    user_prompt_template = USER_PROMPT_FILE.read_text(encoding="utf-8")
     user_prompt = user_prompt_template.format(
         company=company,
         role_title=role_title,
@@ -511,6 +511,8 @@ def git_run(*args: str) -> str:
         cwd=REPO_DIR,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr}")
@@ -566,6 +568,8 @@ def compile_latex() -> tuple[bool, int]:
         cwd=REPO_DIR,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         print(f"  Warning: pdflatex failed. Output:\n{result.stdout[-500:]}")
@@ -576,6 +580,8 @@ def compile_latex() -> tuple[bool, int]:
         cwd=REPO_DIR,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     # Parse page count from pdflatex log
     page_count = 1
@@ -654,7 +660,7 @@ def process_job(job: dict, experience_pool: str, base_tex: str, reference_tex: s
     branch = create_branch(company, role_title, job["count"])
 
     tex_path = REPO_DIR / "main.tex"
-    tex_path.write_text(tailored_tex)
+    tex_path.write_text(tailored_tex, encoding="utf-8")
 
     # 4. Compile LaTeX
     print("  Compiling LaTeX...")
@@ -669,7 +675,7 @@ def process_job(job: dict, experience_pool: str, base_tex: str, reference_tex: s
     match_report = score_resume(job_desc, tailored_tex, company, role_title)
 
     report_path = REPO_DIR / "match_report.txt"
-    report_path.write_text(match_report)
+    report_path.write_text(match_report, encoding="utf-8")
 
     # Extract score line and numeric score
     score_line = ""
@@ -719,9 +725,9 @@ def main(argv=None):
     print(f"Claude account: {args.account or 'default'}")
 
     # Load static files
-    experience_pool = EXPERIENCE_FILE.read_text()
-    base_tex = BASE_TEX_FILE.read_text()
-    reference_tex = REFERENCE_TEX_FILE.read_text()
+    experience_pool = EXPERIENCE_FILE.read_text(encoding="utf-8")
+    base_tex = BASE_TEX_FILE.read_text(encoding="utf-8")
+    reference_tex = REFERENCE_TEX_FILE.read_text(encoding="utf-8")
 
     # Connect to Notion and fetch jobs
     init_notion_headers()

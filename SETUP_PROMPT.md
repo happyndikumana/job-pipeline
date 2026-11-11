@@ -1,29 +1,40 @@
 # Set up my job pipeline
 
-Help me set up job-pipeline on this Mac: https://github.com/happyndikumana/job-pipeline. It reads jobs from a Notion job tracker, uses the Claude API to write a one-page resume for each job from my experience file, builds the PDF with LaTeX, saves it in my own private GitHub repo, and puts the link and a match score back in Notion. Its `README.md` is the reference if anything here differs.
+Help me set up job-pipeline on this computer (a Mac or a Windows PC): https://github.com/happyndikumana/job-pipeline. It reads jobs from a Notion job tracker, uses the Claude API to write a one-page resume for each job from my experience file, builds the PDF with LaTeX, saves it in my own private GitHub repo, and puts the link and a match score back in Notion. Its `README.md` is the reference if anything here differs.
 
 Go through the steps below in order. Before each step, tell me in one plain sentence what you're about to do. If a step fails, stop and show me the error instead of guessing.
 
 ## Ground rules
 
-- Some steps need my Mac password, a browser login, a click in Notion, or a long download. For those, tell me exactly what to do (or give me the exact command to paste into my own Terminal window), wait until I say it's done, then check that it worked.
+- Some steps need my computer's password, a browser login, a click in Notion, or a long download. For those, tell me exactly what to do (or give me the exact command to paste into my own Terminal window), wait until I say it's done, then check that it worked.
 - Never ask me to paste a password, token, or API key into this chat, and never print the contents of `.env`. I'll type secrets into the `.env` file myself. Links to Notion pages are not secret; I can paste those here.
 - Never invent anything about my experience. Everything in my files must come from my own resumes or from me.
+
+## If I'm on Windows
+
+Use PowerShell commands for anything I type myself, and make these swaps throughout:
+
+- Install tools with winget instead of Homebrew: `winget install --id Python.Python.3.12 -e`, `winget install --id GitHub.cli -e` and `winget install --id MiKTeX.MiKTeX -e`. Git for Windows is already installed, because Claude Code needs it. After installing, have me reopen the terminal so the new commands are found.
+- Make LaTeX install missing packages by itself: have me open MiKTeX Console → Settings and choose "Always install missing packages on-the-fly".
+- Create the venv with `py -m venv venv`, and use `venv\Scripts\` wherever these steps say `venv/bin/` (in Git Bash, `venv/Scripts/`).
+- Use `$HOME\Repos` for `~/Repos`, `copy` for `cp`, and `notepad .env` instead of `open -e .env`.
+- Read a .docx with python-docx (install it into the venv) instead of `textutil`.
+- Open a PDF for me with `start` instead of `open`.
 
 ## Before you start
 
 Ask me for, and wait until I have:
 
 - my **master resume** (everything I've done, any format) and my **model resume** (one page, in the layout I want), as file paths
-- a **Claude API key**
+- a **Claude API key**, with credit added at https://console.anthropic.com
 - a **GitHub** account and a **Notion** account
 - about **5 GB** of free disk space (LaTeX is large)
 
 ## Steps
 
-1. **Check what's installed:** Homebrew, git, Python 3, the GitHub CLI (`gh`), and LaTeX (`pdflatex`). Skip anything I already have.
+1. **Check what's installed:** Homebrew (Mac only), git, Python 3, the GitHub CLI (`gh`), and LaTeX (`pdflatex`). Skip anything I already have.
 
-2. **Install what's missing.** Homebrew comes from https://brew.sh. After it installs, run the "Next steps" commands it prints so `brew` is on my PATH. Then:
+2. **Install what's missing.** On Windows, follow "If I'm on Windows" above instead of this step. On a Mac: Homebrew comes from https://brew.sh. After it installs, run the "Next steps" commands it prints so `brew` is on my PATH. Then:
 
    ```bash
    brew install python gh

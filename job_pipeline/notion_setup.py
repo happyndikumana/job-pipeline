@@ -74,7 +74,7 @@ def title_of(obj: dict) -> str:
 
 def save_env_value(env_path: Path, key: str, value: str):
     """Set KEY=value in .env, replacing an existing line or adding one."""
-    lines = env_path.read_text().splitlines() if env_path.exists() else []
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
     out, done = [], False
     for line in lines:
         if line.split("=", 1)[0].strip() == key:
@@ -84,7 +84,7 @@ def save_env_value(env_path: Path, key: str, value: str):
             out.append(line)
     if not done:
         out.append(f"{key}={value}")
-    env_path.write_text("\n".join(out) + "\n")
+    env_path.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
 def shared_pages(token: str) -> list:
