@@ -1,0 +1,2 @@
+# The shared job-pipeline code: https://github.com/happyndikumana/job-pipeline
+job-pipeline @ git+https://github.com/happyndikumana/job-pipeline.git

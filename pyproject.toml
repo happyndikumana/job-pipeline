@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "job-pipeline"
+version = "1.0.0"
+description = "Job hunt pipeline: tailor a one-page LaTeX resume to each job in a Notion tracker, using Claude."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "anthropic",
+    "requests",
+    "beautifulsoup4",
+    "python-dotenv",
+    "playwright",
+]
+
+[project.scripts]
+job-pipeline = "job_pipeline.cli:main"
+
+[tool.setuptools]
+packages = ["job_pipeline"]
+
+[tool.setuptools.package-data]
+job_pipeline = ["templates/*"]

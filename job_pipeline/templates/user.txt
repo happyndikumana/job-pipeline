@@ -1,0 +1,30 @@
+## Job Posting
+- **Company:** {company}
+- **Role:** {role_title}
+- **Level:** {level}
+- **Location:** {location}
+
+### Job Description:
+{job_description}
+
+---
+
+## Experience Pool (select from this):
+{experience_pool}
+
+---
+
+## Base LaTeX Template (use this exact structure and commands):
+{base_tex}
+
+---
+
+## Reference Resume (MAXIMUM content volume — this fills exactly 1 page):
+{reference_tex}
+
+The reference resume above represents the MAXIMUM amount of content that fits on one page.
+Your generated resume must contain EQUAL OR LESS content than the reference. Never exceed it.
+
+---
+
+Generate the tailored LaTeX resume now. Output only the LaTeX source code.
