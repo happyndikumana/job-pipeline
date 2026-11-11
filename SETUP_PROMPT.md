@@ -1,13 +1,13 @@
 # Set up my job pipeline
 
-Help me set up job-pipeline on this Mac: https://github.com/happyndikumana/job-pipeline. It reads jobs from my Notion job tracker, uses the Claude API to write a one-page resume for each job from my experience file, builds the PDF with LaTeX, saves it in my own private GitHub repo, and puts the link and a match score back in Notion. Its `README.md` is the reference if anything here differs.
+Help me set up job-pipeline on this Mac: https://github.com/happyndikumana/job-pipeline. It reads jobs from a Notion job tracker, uses the Claude API to write a one-page resume for each job from my experience file, builds the PDF with LaTeX, saves it in my own private GitHub repo, and puts the link and a match score back in Notion. Its `README.md` is the reference if anything here differs.
 
 Go through the steps below in order. Before each step, tell me in one plain sentence what you're about to do. If a step fails, stop and show me the error instead of guessing.
 
 ## Ground rules
 
-- Some steps need my Mac password, a browser login, or a long download. For those, give me the exact command to paste into my own Terminal window, wait until I say it's done, then check that it worked.
-- Never ask me to paste a password, token, or API key into this chat, and never print the contents of `.env`. I'll type secrets into the `.env` file myself.
+- Some steps need my Mac password, a browser login, a click in Notion, or a long download. For those, tell me exactly what to do (or give me the exact command to paste into my own Terminal window), wait until I say it's done, then check that it worked.
+- Never ask me to paste a password, token, or API key into this chat, and never print the contents of `.env`. I'll type secrets into the `.env` file myself. Links to Notion pages are not secret; I can paste those here.
 - Never invent anything about my experience. Everything in my files must come from my own resumes or from me.
 
 ## Before you start
@@ -16,7 +16,7 @@ Ask me for, and wait until I have:
 
 - my **master resume** (everything I've done, any format) and my **model resume** (one page, in the layout I want), as file paths
 - a **Claude API key**
-- a **Notion job tracker** (or tell me you'll help me make one)
+- a **GitHub** account and a **Notion** account
 - about **5 GB** of free disk space (LaTeX is large)
 
 ## Steps
@@ -57,35 +57,30 @@ Ask me for, and wait until I have:
 
 7. **Finish `prompts/system.txt`.** Replace every `<FILL IN ...>` using my reference resume: the section order, the most entries and bullets per section (counted from it), how many characters fit on one printed bullet line (measure it), and which command to use for each kind of entry. Don't change the other rules.
 
-8. **Set up Notion.** Walk me through it one step at a time and wait for me after each:
-   1. At https://www.notion.so/profile/integrations, create a new internal integration in my workspace and keep its secret handy.
-   2. Open my job tracker, click **•••** then **Connections**, and add that integration.
-   3. Find the database ID: the 32-character code in the tracker's URL, just before `?v=`.
+8. **Get my Notion key.** Walk me through it and wait for me: at https://www.notion.so/profile/integrations, create a new internal integration in my workspace, name it "Job Pipeline", and keep its secret handy. Only a workspace owner can do this.
 
-9. **Create my `.env`:** run `cp .env.example .env`, then open it for me with `open -e .env`. I'll fill in `NOTION_TOKEN`, `NOTION_DATABASE_ID` and `ANTHROPIC_API_KEY`, and save. Then, for each of those names, print only "set" or "missing", and treat the example placeholder text as missing.
+9. **Create my `.env`:** run `cp .env.example .env`, then open it for me with `open -e .env`. I'll fill in `NOTION_TOKEN` (the integration secret) and `ANTHROPIC_API_KEY`, and save. Then, for each of those names, print only "set" or "missing", and treat the example placeholder text as missing.
 
-10. **Check my Notion columns.** Using the venv's Python with `requests` and `python-dotenv`, GET `https://api.notion.com/v1/databases/<NOTION_DATABASE_ID>` with the headers `Authorization: Bearer <NOTION_TOKEN>` and `Notion-Version: 2022-06-28`. Print only column names and types, never the token. These must exist with exactly these names and types:
+10. **Build my job tracker in Notion.** Notion only lets the integration into pages I share with it, so ask me to:
+    1. make an empty page in Notion, for example "Job Search";
+    2. on that page, click ••• → Connections and add "Job Pipeline";
+    3. click ••• → Copy link, and paste the link here.
 
-    | Column | Type |
-    |---|---|
-    | Company | title |
-    | Role Title | rich_text (Notion calls it "Text") |
-    | Level | select |
-    | Location | rich_text |
-    | Job Link | url |
-    | count | number |
-    | Application Stage | select, with an option named "Job Expired" |
-    | Resume Version | rich_text |
-    | Resume Score | rich_text |
-    | Resume Match Report | rich_text |
+    Then run:
 
-    Tell me exactly what to add or rename in Notion, then check again until everything matches. Don't change my Notion through the API yourself.
+    ```bash
+    ./venv/bin/job-pipeline notion --page "THE-LINK-I-PASTED"
+    ```
+
+    It creates a "Job Tracker" with every column the pipeline needs and saves its ID to `.env`. Show me its output.
+
+    If I'd rather use a tracker I already have: ask me to share that tracker with "Job Pipeline" (••• → Connections) and to add its ID to `.env` as `NOTION_DATABASE_ID` (the 32-character code in its link, just before `?v=`). Then run `./venv/bin/job-pipeline notion` with no `--page`. It adds any missing columns and names any with the wrong type; walk me through fixing those in Notion and run it again until it says everything is there.
 
 11. **Check that the Claude key works** without spending money: with the venv's Python, create `anthropic.Anthropic(api_key=<ANTHROPIC_API_KEY from .env>)` and call `client.models.list()`. Print only "Claude key works" or the error.
 
 12. **Save my files to GitHub.** Show me `git status` first. Commit `experience.md`, `main.tex`, `reference_resume.tex`, `reference_resume.pdf`, `prompts/system.txt`, `requirements.txt`, `.gitignore` and `.env.example`, then push to `main`. Never commit `.env`.
 
-13. **First real test:** ask me to add one job to my tracker (Company, Role Title, Job Link, a `count` number no other job uses, and Resume Version left empty), and to type "n/a" in Resume Version for any old jobs I don't want resumes for. Then run:
+13. **First real test:** ask me to add one job to my tracker: **Company**, **Role Title** and **Job Link**, with Resume Version left empty (the count column numbers itself). If my tracker already has old jobs I don't want resumes for, have me type "n/a" in their Resume Version. Then run:
 
     ```bash
     ./venv/bin/job-pipeline tailor --limit 1

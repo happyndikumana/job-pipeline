@@ -12,6 +12,12 @@ A job-hunt pipeline that runs on your own laptop, one command per stage.
 
 **Later — `search`:** find jobs and add them to your Notion tracker.
 
+| Command | What it does |
+|---|---|
+| `job-pipeline init` | Creates the starter files in a new resume folder |
+| `job-pipeline notion` | Creates your Notion job tracker, or adds missing columns to the one you have |
+| `job-pipeline tailor` | Writes a tailored resume for each job in Notion that doesn't have one |
+
 ## How it's organized
 
 There are two repos:
@@ -33,12 +39,12 @@ Your resume repo holds:
 ## What you need
 
 - A Mac (the steps below are for macOS)
-- A GitHub account, a Notion job tracker, and a Claude API key
+- A GitHub account, a Notion account, and a Claude API key
 - Your **master resume** (everything you've ever done, any format) and a **model resume** (one page, in the layout you want)
 
 ## Set up with Claude Code (easiest)
 
-Open Claude Code and give it [`SETUP_PROMPT.md`](SETUP_PROMPT.md). It installs the tools, makes your resume repo, turns your two resumes into the files above, sets up Notion and your keys, and runs a first test. It stops for anything that needs your password or a browser.
+Open Claude Code and give it [`SETUP_PROMPT.md`](SETUP_PROMPT.md). It installs the tools, makes your resume repo, turns your two resumes into the files above, builds your Notion tracker, and runs a first test. It stops for anything that needs your password, a browser, or a click in Notion.
 
 ## Set up by hand
 
@@ -64,36 +70,54 @@ python3 -m venv venv
 
 **3. Fill in the starter files:** `experience.md`, your layout as `main.tex` plus a full one-page example as `reference_resume.tex`, and every `<FILL IN ...>` in `prompts/system.txt`. Commit and push them, but never `.env`.
 
-**4. Notion.** Your tracker needs these columns, with these exact names:
+**4. Keys.** Run `cp .env.example .env`, then fill in:
+
+- `ANTHROPIC_API_KEY`: your Claude API key
+- `NOTION_TOKEN`: at https://www.notion.so/profile/integrations, create an internal integration in your workspace and copy its secret. Only a workspace owner can do this.
+
+**5. Your Notion tracker.** Notion only lets the integration into pages you share with it, so this part takes two clicks:
+
+1. In Notion, make an empty page, for example "Job Search".
+2. On that page, click **•••** → **Connections** and add your integration. Then click **•••** → **Copy link**.
+
+Then build the tracker inside it:
+
+```bash
+./venv/bin/job-pipeline notion --page "PASTE-THE-PAGE-LINK"
+```
+
+It creates a "Job Tracker" with every column the pipeline needs and saves its ID to `.env`.
+
+**Already have a tracker?** Share the tracker itself with the integration (**•••** → **Connections**), put its ID in `.env` as `NOTION_DATABASE_ID` (the 32-character code in its link, just before `?v=`), and run `./venv/bin/job-pipeline notion`. It adds any missing columns and names any that have the wrong type, so you can fix those in Notion.
+
+The columns it makes:
 
 | Column | Type | Notes |
 |---|---|---|
 | Company | Title | |
 | Role Title | Text | |
+| Job Link | URL | |
 | Level | Select | Optional to fill in |
 | Location | Text | Optional to fill in |
-| Job Link | URL | |
-| count | Number | Give each job its own number. It keeps branch names unique. |
-| Application Stage | Select | Must include an option called `Job Expired` |
-| Resume Version | Text | Leave empty. The script fills it in. |
-| Resume Score | Text | The script fills it in. |
-| Resume Match Report | Text | The script fills it in. |
-
-Other columns are fine; the script ignores them. Then:
-
-1. At https://www.notion.so/profile/integrations, create an integration and copy its secret. Only a workspace owner can do this.
-2. Open your tracker, click **•••** → **Connections**, and add that integration.
-3. Copy the database ID: the 32-character code in the tracker's URL, just before `?v=`.
-
-**5. Keys:** run `cp .env.example .env`, then fill in `NOTION_TOKEN`, `NOTION_DATABASE_ID` and `ANTHROPIC_API_KEY`.
+| count | ID | Numbers each job by itself. An older tracker can use a Number column instead. |
+| Application Stage | Select | 14 stages, from Not Applied to Offer. The pipeline needs `Job Expired`. |
+| Resume Version | Text | Leave empty. The pipeline fills it in. |
+| Resume Score | Text | The pipeline fills it in. |
+| Resume Match Report | Text | The pipeline fills it in. |
+| Date Applied, Notes | Date, Text | For you. The pipeline ignores them. |
 
 ## Using it
+
+1. Add jobs to your tracker: **Company**, **Role Title** and **Job Link**. Leave Resume Version empty.
+2. Run:
 
 ```bash
 cd ~/Repos/YOUR-REPO
 git checkout main && git pull
 ./venv/bin/job-pipeline tailor
 ```
+
+3. Each finished job gets a **View Resume** link, a score and a match report in Notion. Read the resume before you send it.
 
 | Option | What it does |
 |---|---|

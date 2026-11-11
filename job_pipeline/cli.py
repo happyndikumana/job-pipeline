@@ -2,6 +2,7 @@
 job-pipeline — one command, one step per stage of the job hunt.
 
     job-pipeline init      set up the starter files in a new resume folder
+    job-pipeline notion    create your Notion job tracker (or fix its columns)
     job-pipeline tailor    write a tailored resume for each new job in Notion
 """
 
@@ -9,6 +10,7 @@ import sys
 
 COMMANDS = {
     "init": "Set up the starter files in a new resume folder",
+    "notion": "Create your Notion job tracker, or add missing columns to yours",
     "tailor": "Write a tailored resume for each job in Notion that doesn't have one",
 }
 
@@ -31,10 +33,13 @@ def main():
         usage()
         sys.exit(1)
 
-    # Import per command: tailor loads .env and the API clients, init needs neither.
+    # Import per command: tailor loads .env and the API clients, the others need less.
     if command == "init":
         from job_pipeline import init
         init.main(rest)
+    elif command == "notion":
+        from job_pipeline import notion_setup
+        notion_setup.main(rest)
     elif command == "tailor":
         from job_pipeline import tailor
         tailor.main(rest)

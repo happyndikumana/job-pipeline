@@ -121,7 +121,7 @@ def check_config(account: str = ""):
         missing.append(api_key_var(account))
     if missing:
         print(f"Error: Missing environment variables: {', '.join(missing)}")
-        print("Copy .env.example to .env and fill in your values.")
+        print("Copy .env.example to .env and fill in your values. job-pipeline notion creates the tracker and fills in NOTION_DATABASE_ID.")
         sys.exit(1)
 
 
@@ -260,6 +260,8 @@ def _get_url(prop: dict) -> str:
 
 def _get_number(prop: dict) -> int:
     val = prop.get("number")
+    if val is None:  # an auto-numbered ID column
+        val = (prop.get("unique_id") or {}).get("number")
     return int(val) if val is not None else 0
 
 
