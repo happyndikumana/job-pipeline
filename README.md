@@ -2,6 +2,38 @@
 
 A job-hunt pipeline that runs on your own laptop, one command per stage.
 
+## Get started
+
+### What you need
+
+- A Mac with about 5 GB free, and your Mac password
+- [Claude Code](https://claude.com/claude-code), to run the setup for you
+- A **Claude API key** from https://console.anthropic.com (each tailored resume costs roughly 10–15 cents)
+- A **GitHub** account
+- A **Notion** account, as owner of the workspace you'll use
+- Your **master resume** (everything you've ever done, any format) and a **model resume** (one page, in the look you want)
+
+### Then let Claude Code set you up
+
+Open Claude Code in Terminal and paste:
+
+```text
+Fetch https://raw.githubusercontent.com/happyndikumana/job-pipeline/main/SETUP_PROMPT.md and follow its steps to set me up.
+```
+
+It installs the tools, makes your resume repo, turns your two resumes into your resume files, builds your Notion tracker, and runs a first test. Expect to do these few things yourself when it asks:
+
+- type your Mac password, and log in to GitHub in the browser
+- create an empty private repo on GitHub
+- create a Notion integration and copy its secret
+- paste your keys into the `.env` file it opens for you
+- make an empty Notion page, connect the integration to it, and paste the page's link
+- check your experience file and your resume layout
+
+After that, see [Using it](#using-it) for the everyday steps.
+
+## What it does
+
 **Today — `tailor`:** for every job in your Notion tracker that doesn't have a resume yet, it:
 
 1. Reads the job description from the job link (or asks you to paste it).
@@ -35,32 +67,6 @@ Your resume repo holds:
 | `prompts/system.txt` | The rules the AI follows, with your layout's limits filled in. |
 | `requirements.txt` | Installs this code. |
 | `.env` | Your keys. Stays on your laptop, never committed. |
-
-## What you need
-
-- A Mac with about 5 GB free, and your Mac password
-- [Claude Code](https://claude.com/claude-code), to run the setup for you
-- A **Claude API key** from https://console.anthropic.com (each tailored resume costs roughly 10–15 cents)
-- A **GitHub** account
-- A **Notion** account, as owner of the workspace you'll use
-- Your **master resume** (everything you've ever done, any format) and a **model resume** (one page, in the look you want)
-
-## Set up with Claude Code (easiest)
-
-Open Claude Code in Terminal and paste:
-
-```text
-Fetch https://raw.githubusercontent.com/happyndikumana/job-pipeline/main/SETUP_PROMPT.md and follow its steps to set me up.
-```
-
-It installs the tools, makes your resume repo, turns your two resumes into the files above, builds your Notion tracker, and runs a first test. Expect to do these few things yourself when it asks:
-
-- type your Mac password, and log in to GitHub in the browser
-- create an empty private repo on GitHub
-- create a Notion integration and copy its secret
-- paste your keys into the `.env` file it opens for you
-- make an empty Notion page, connect the integration to it, and paste the page's link
-- check your experience file and your resume layout
 
 ## Set up by hand
 
