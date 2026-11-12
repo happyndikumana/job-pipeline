@@ -56,6 +56,7 @@ Requirements:
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -519,13 +520,60 @@ def git_run(*args: str) -> str:
     return result.stdout.strip()
 
 
+class SetupError(Exception):
+    """A problem with the setup that would make every job fail, so the batch stops."""
+
+
+PDFLATEX_MISSING = (
+    "pdflatex not found. Install LaTeX, then open a new terminal so it's on PATH "
+    "(on Windows, restart Claude Code too)."
+)
+
+
+def require_pdflatex():
+    if shutil.which("pdflatex") is None:
+        raise SetupError(PDFLATEX_MISSING)
+
+
+def require_clean_main():
+    """Stop if any tracked file has uncommitted changes.
+
+    A failed job discards everything on its resume/ branch, so nothing of the
+    user's may ride along onto it. Leftovers from an older failed run are caught
+    here too, before they can end up in a new resume.
+    """
+    dirty = git_run("status", "--porcelain", "--untracked-files=no")
+    if dirty:
+        # Each line is a two-letter status, then the path (git_run trims the first line).
+        files = [line[2:].strip() for line in dirty.splitlines()]
+        raise SetupError(
+            "These files have uncommitted changes: " + ", ".join(files) + "\n"
+            "  Commit them, or discard them if they're leftovers from a failed run:\n"
+            "    git checkout HEAD -- " + " ".join(files)
+        )
+
+
+def return_to_main_clean():
+    """After a failed job: drop this job's partial files, then go back to main."""
+    try:
+        current = git_run("rev-parse", "--abbrev-ref", "HEAD")
+        if current.startswith("resume/"):
+            git_run("checkout", "--force", "main")
+            git_run("clean", "-f", "--", "main.pdf", "match_report.txt")
+        else:
+            git_run("checkout", "main")
+    except RuntimeError:
+        pass
+
+
 def create_branch(company: str, role_title: str, count: int) -> str:
     """Create and checkout a new branch for this job's resume.
     Uses the Notion count number to ensure unique branch names."""
     branch = f"resume/{slugify(company)}-{slugify(role_title)}-{count}"
 
-    # Ensure we start from main
+    # Ensure we start from a clean main
     git_run("checkout", "main")
+    require_clean_main()
 
     # Delete if it already exists (re-run scenario)
     existing = git_run("branch", "--list", branch)
@@ -563,14 +611,17 @@ def commit_and_return(branch: str, company: str, role_title: str, match_score: s
 # ---------------------------------------------------------------------------
 def compile_latex() -> tuple[bool, int]:
     """Compile main.tex to PDF using pdflatex. Returns (success, page_count)."""
-    result = subprocess.run(
-        ["pdflatex", "-interaction=nonstopmode", "main.tex"],
-        cwd=REPO_DIR,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        result = subprocess.run(
+            ["pdflatex", "-interaction=nonstopmode", "main.tex"],
+            cwd=REPO_DIR,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except FileNotFoundError:
+        raise SetupError(PDFLATEX_MISSING)
     if result.returncode != 0:
         print(f"  Warning: pdflatex failed. Output:\n{result.stdout[-500:]}")
         return False, 0
@@ -722,6 +773,13 @@ def main(argv=None):
 
     use_claude_account(args.account)
     check_config(args.account)
+    try:
+        require_pdflatex()
+        git_run("checkout", "main")
+        require_clean_main()
+    except (SetupError, RuntimeError) as e:
+        print(f"Error: {e}")
+        sys.exit(1)
     print(f"Claude account: {args.account or 'default'}")
 
     # Load static files
@@ -758,52 +816,39 @@ def main(argv=None):
         except KeyboardInterrupt:
             print("\n\n  Interrupted by user. Cleaning up...")
             results.append((company, role, "Interrupted"))
-            try:
-                git_run("checkout", "main")
-            except RuntimeError:
-                pass
+            return_to_main_clean()
+            break
+        except SetupError as e:
+            print(f"\n  {e}\n  Stopping batch.")
+            results.append((company, role, "Failed — setup problem"))
+            return_to_main_clean()
             break
         except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
             print(f"\n  API authentication error: {e}")
             print(f"  Check {api_key_var(args.account)} in .env. Stopping batch.")
             results.append((company, role, "Failed — API auth error"))
-            try:
-                git_run("checkout", "main")
-            except RuntimeError:
-                pass
+            return_to_main_clean()
             break
         except anthropic.RateLimitError as e:
             print(f"\n  API rate limit or out of credits: {e}")
             print("  Check your Anthropic account balance. Stopping batch.")
             results.append((company, role, "Failed — out of credits"))
-            try:
-                git_run("checkout", "main")
-            except RuntimeError:
-                pass
+            return_to_main_clean()
             break
         except requests.RequestException as e:
             print(f"\n  Notion API error: {e}")
             results.append((company, role, "Failed — Notion API error"))
-            try:
-                git_run("checkout", "main")
-            except RuntimeError:
-                pass
+            return_to_main_clean()
             continue
         except RuntimeError as e:
             print(f"\n  Git error: {e}")
             results.append((company, role, "Failed — git error"))
-            try:
-                git_run("checkout", "main")
-            except RuntimeError:
-                pass
+            return_to_main_clean()
             continue
         except Exception as e:
             print(f"\n  Unexpected error: {e}")
             results.append((company, role, f"Failed — {type(e).__name__}"))
-            try:
-                git_run("checkout", "main")
-            except RuntimeError:
-                pass
+            return_to_main_clean()
             continue
 
     # Mark remaining jobs that weren't reached

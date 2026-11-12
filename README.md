@@ -130,7 +130,7 @@ The columns it makes:
 
 ## Windows
 
-Everything works the same on Windows; only the commands differ. Use **PowerShell**, and reopen it after installing anything so new commands are found. These Windows steps are new: if one doesn't work on your PC, please open an issue on this repo.
+Everything works the same on Windows; only the commands differ. Use **PowerShell**, and reopen it after installing anything so new commands are found. If you're setting up with Claude Code, close and reopen **Claude Code itself** after the tools install, or it won't find LaTeX. These Windows steps are new: if one doesn't work on your PC, please open an issue on this repo.
 
 **Before Claude Code:** Claude Code on Windows needs Git, so install Git first, then [Claude Code](https://claude.com/claude-code):
 
@@ -206,6 +206,8 @@ git checkout main && git pull
 | `--manual` | Paste every job description yourself |
 | `--skip-manual` | Skip jobs whose page can't be read, instead of asking you to paste |
 | `--account work` | Use a different Claude API key for this run |
+
+**Commit first:** if you've edited `experience.md` or any other file, commit and push it before running. The pipeline won't start while tracked files have uncommitted changes, so your work can't leak into a resume branch or get lost.
 
 **First run:** it picks up every job whose Resume Version is empty. Start with `--limit 1`, and type `n/a` in Resume Version for old jobs you don't want resumes for.
 

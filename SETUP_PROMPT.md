@@ -14,7 +14,7 @@ Go through the steps below in order. Before each step, tell me in one plain sent
 
 Use PowerShell commands for anything I type myself, and make these swaps throughout:
 
-- Install tools with winget instead of Homebrew: `winget install --id Python.Python.3.12 -e`, `winget install --id GitHub.cli -e` and `winget install --id MiKTeX.MiKTeX -e`. Git for Windows is already installed, because Claude Code needs it. After installing, have me reopen the terminal so the new commands are found.
+- Install tools with winget instead of Homebrew: `winget install --id Python.Python.3.12 -e`, `winget install --id GitHub.cli -e` and `winget install --id MiKTeX.MiKTeX -e`. Git for Windows is already installed, because Claude Code needs it. After installing, have me close and reopen **Claude Code itself**, not just the terminal: programs that were already running don't see the new PATH, so LaTeX and the others stay invisible until then. If `pdflatex` is still missing in Git Bash, add it for this session with `export PATH="$PATH:$(cygpath -u "$LOCALAPPDATA")/Programs/MiKTeX/miktex/bin/x64"` (a raw `C:\...` path doesn't work there, because bash splits PATH on `:`).
 - Make LaTeX install missing packages by itself: have me open MiKTeX Console → Settings and choose "Always install missing packages on-the-fly".
 - Create the venv with `py -m venv venv`, and use `venv\Scripts\` wherever these steps say `venv/bin/` (in Git Bash, `venv/Scripts/`).
 - Use `$HOME\Repos` for `~/Repos`, `copy` for `cp`, and `notepad .env` instead of `open -e .env`.

@@ -23,11 +23,11 @@ def usage():
 
 
 def main():
-    # Windows consoles can't show every character (arrows, bullets); print a
-    # stand-in instead of crashing.
+    # Print UTF-8 everywhere (Windows pipes default to cp1252, which garbles the
+    # match report), and a stand-in instead of crashing on anything unprintable.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(errors="replace")
+            stream.reconfigure(encoding="utf-8", errors="replace")
     args = sys.argv[1:]
     if not args or args[0] in ("-h", "--help"):
         usage()
