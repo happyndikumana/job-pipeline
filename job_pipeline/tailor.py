@@ -59,6 +59,8 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import anthropic
@@ -124,6 +126,72 @@ def check_config(account: str = ""):
         print(f"Error: Missing environment variables: {', '.join(missing)}")
         print("Copy .env.example to .env and fill in your values. job-pipeline notion creates the tracker and fills in NOTION_DATABASE_ID.")
         sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Progress display
+# ---------------------------------------------------------------------------
+class Step:
+    """Show one step while it runs, so a long wait never looks like a hang.
+
+    In a terminal window the line counts up in place ("Writing... 12s"), then ends
+    "done (41s)". When output is captured (e.g. by Claude Code) it prints a
+    "still working" line every 15 seconds instead. Set .detail to add a result.
+    """
+
+    def __init__(self, label: str, live: bool = True):
+        self.label = label
+        self.detail = ""
+        # Live means one line updated in place; otherwise the result gets its own
+        # line, which leaves room for messages printed during the step.
+        self.inline = live and sys.stdout.isatty()
+        self.live = live
+
+    def __enter__(self):
+        self.start = time.monotonic()
+        self._stop = threading.Event()
+        self._width = 0
+        if self.inline:
+            self._write(f"  {self.label}...")
+        else:
+            print(f"  {self.label}...", flush=True)
+        self._thread = None
+        if self.live:
+            self._thread = threading.Thread(target=self._tick, daemon=True)
+            self._thread.start()
+        return self
+
+    def _seconds(self) -> int:
+        return int(time.monotonic() - self.start)
+
+    def _write(self, text: str):
+        # Pad over whatever was there before, then return to the line start.
+        sys.stdout.write("\r" + text.ljust(self._width))
+        sys.stdout.flush()
+        self._width = max(self._width, len(text))
+
+    def _tick(self):
+        every = 1 if self.inline else 15
+        while not self._stop.wait(every):
+            if self.inline:
+                self._write(f"  {self.label}... {self._seconds()}s")
+            else:
+                print(f"    still working ({self._seconds()}s)", flush=True)
+
+    def __exit__(self, exc_type, exc, tb):
+        self._stop.set()
+        if self._thread:
+            self._thread.join()
+        outcome = f"{'done' if exc_type is None else 'failed'} ({self._seconds()}s)"
+        if self.detail and exc_type is None:
+            outcome += f", {self.detail}"
+        if self.inline:
+            self._write(f"  {self.label}... {outcome}")
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+        else:
+            print(f"    {outcome}", flush=True)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +387,7 @@ def _scrape_with_requests(url: str) -> str:
             return "EXPIRED"
         resp.raise_for_status()
     except requests.RequestException as e:
-        print(f"  Warning: Could not fetch {url}: {e}")
+        print(f"    Couldn't load the page directly ({e}).")
         return ""
 
     return _extract_text_from_html(resp.text)
@@ -330,10 +398,10 @@ def _scrape_with_playwright(url: str) -> str:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        print("  Warning: Playwright not installed. Run: pip install playwright && playwright install chromium")
+        print("    The browser helper isn't installed, so this page can't be read. Fix it with: playwright install chromium (from your venv)")
         return ""
 
-    print("  Using Playwright for JS-rendered page...")
+    print("    Opening it in a browser instead (can take 10-20s)...", flush=True)
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -345,7 +413,7 @@ def _scrape_with_playwright(url: str) -> str:
             browser.close()
         return _extract_text_from_html(html)
     except Exception as e:
-        print(f"  Warning: Playwright scrape failed: {e}")
+        print(f"    The browser couldn't load it either ({e}).")
         return ""
 
 
@@ -384,7 +452,7 @@ def scrape_job_description(url: str) -> str:
         "not authorized to access",
     ]
     if text and any(ind in text.lower() for ind in blocked_indicators):
-        print("  Warning: Scrape returned a security block page (Cloudflare/bot detection).")
+        print("    The page is a login wall or bot check, not the job description.")
         return ""
 
     return text
@@ -609,8 +677,8 @@ def commit_and_return(branch: str, company: str, role_title: str, match_score: s
 # ---------------------------------------------------------------------------
 # LaTeX Compilation
 # ---------------------------------------------------------------------------
-def compile_latex() -> tuple[bool, int]:
-    """Compile main.tex to PDF using pdflatex. Returns (success, page_count)."""
+def compile_latex() -> tuple[bool, int, str]:
+    """Compile main.tex to PDF using pdflatex. Returns (success, page_count, end of the log)."""
     try:
         result = subprocess.run(
             ["pdflatex", "-interaction=nonstopmode", "main.tex"],
@@ -623,8 +691,7 @@ def compile_latex() -> tuple[bool, int]:
     except FileNotFoundError:
         raise SetupError(PDFLATEX_MISSING)
     if result.returncode != 0:
-        print(f"  Warning: pdflatex failed. Output:\n{result.stdout[-500:]}")
-        return False, 0
+        return False, 0, result.stdout[-500:]
     # Run twice for references
     result2 = subprocess.run(
         ["pdflatex", "-interaction=nonstopmode", "main.tex"],
@@ -639,40 +706,45 @@ def compile_latex() -> tuple[bool, int]:
     match = re.search(r"Output written on main\.pdf \((\d+) page", result2.stdout)
     if match:
         page_count = int(match.group(1))
-    return True, page_count
+    return True, page_count, ""
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def process_job(job: dict, experience_pool: str, base_tex: str, reference_tex: str, skip_manual: bool = False, manual: bool = False) -> str:
+def process_job(job: dict, experience_pool: str, base_tex: str, reference_tex: str,
+                skip_manual: bool = False, manual: bool = False, position: str = "") -> tuple:
     """Process a single job posting: tailor, branch, compile, score, commit, update Notion.
-    Returns a status string: 'Completed (XX%)' or 'Skipped — <reason>'."""
+    Returns (status, pdf_url). status is 'Completed (XX%)' or 'Skipped — <reason>';
+    pdf_url is '' when there's no resume."""
     company = job["company"]
     role_title = job["role_title"]
     job_link = job["job_link"]
-    print(f"\n{'='*60}")
-    print(f"Processing: {role_title} at {company}")
-    print(f"{'='*60}")
+    print(f"\n{position}{role_title} at {company}")
 
     # 1. Get job description (scrape, manual paste, or both)
-    if manual:
-        job_desc = ""
-    else:
-        print("  Scraping job description...")
-        job_desc = scrape_job_description(job_link)
+    job_desc = ""
+    if not manual:
+        with Step("Reading the job posting", live=False) as step:
+            job_desc = scrape_job_description(job_link)
+            if job_desc == "EXPIRED":
+                step.detail = "the posting is gone"
+            elif len(job_desc) >= 200:
+                step.detail = f"{len(job_desc):,} characters"
+            else:
+                step.detail = "couldn't read it"
         if job_desc == "EXPIRED":
-            print(f"  Job posting is no longer available. Marking as expired in Notion.")
             mark_job_expired(job["page_id"])
-            return "Skipped — job expired"
+            print("  Marked it Job Expired in Notion.")
+            return "Skipped — job expired", ""
 
     if not job_desc or len(job_desc) < 200:
         if not manual:
-            print(f"  Could not scrape job description from: {job_link}")
+            print(f"  Couldn't read the job posting at {job_link}")
             if skip_manual:
-                print("  Skipping (--skip-manual).")
-                return "Skipped — scrape failed"
-        print("  Paste the job description below (press Enter twice when done):")
+                print("  Skipping it (--skip-manual).")
+                return "Skipped — couldn't read the posting", ""
+        print("  Paste the job description below, then press Enter twice:", flush=True)
         lines = []
         empty_count = 0
         while True:
@@ -689,74 +761,67 @@ def process_job(job: dict, experience_pool: str, base_tex: str, reference_tex: s
             lines.append(line)
         job_desc = "\n".join(lines).strip()
         if not job_desc:
-            print("  Skipping — no job description provided.")
-            return "Skipped — no description"
-        print(f"  Received job description ({len(job_desc)} chars).")
+            print("  Nothing was pasted, so this job is skipped.")
+            return "Skipped — no description", ""
+        print(f"  Got it ({len(job_desc):,} characters).")
 
     # 2. Tailor resume
-    print("  Tailoring resume with Claude...")
-    tailored_tex = tailor_resume(
-        job_description=job_desc,
-        experience_pool=experience_pool,
-        base_tex=base_tex,
-        reference_tex=reference_tex,
-        company=company,
-        role_title=role_title,
-        level=job["level"],
-        location=job["location"],
-    )
+    with Step("Writing your resume with Claude (usually under a minute)"):
+        tailored_tex = tailor_resume(
+            job_description=job_desc,
+            experience_pool=experience_pool,
+            base_tex=base_tex,
+            reference_tex=reference_tex,
+            company=company,
+            role_title=role_title,
+            level=job["level"],
+            location=job["location"],
+        )
 
-    # 3. Create branch and write files
-    print("  Creating git branch...")
-    branch = create_branch(company, role_title, job["count"])
-
-    tex_path = REPO_DIR / "main.tex"
-    tex_path.write_text(tailored_tex, encoding="utf-8")
-
-    # 4. Compile LaTeX
-    print("  Compiling LaTeX...")
-    compiled, page_count = compile_latex()
+    # 3. Create the branch, write the resume, build the PDF
+    with Step("Building the PDF") as step:
+        branch = create_branch(company, role_title, job["count"])
+        (REPO_DIR / "main.tex").write_text(tailored_tex, encoding="utf-8")
+        compiled, page_count, log_tail = compile_latex()
+        step.detail = f"{page_count} page{'s' if page_count != 1 else ''}" if compiled else "LaTeX reported errors"
     if not compiled:
-        print("  Warning: PDF compilation failed — committing .tex anyway.")
+        print("  The PDF didn't build cleanly. The end of the LaTeX log:")
+        print("\n".join("    " + line for line in log_tail.splitlines()))
+        print("  The .tex is saved anyway, so you can fix it by hand.")
     if page_count > 1:
-        print(f"  WARNING: Resume is {page_count} pages (expected 1)")
+        print(f"  WARNING: the resume is {page_count} pages, not 1. Trim it before you send it.")
 
-    # 5. Score the resume
-    print("  Scoring resume match...")
-    match_report = score_resume(job_desc, tailored_tex, company, role_title)
+    # 4. Score the resume
+    with Step("Scoring it against the job") as step:
+        match_report = score_resume(job_desc, tailored_tex, company, role_title)
+        (REPO_DIR / "match_report.txt").write_text(match_report, encoding="utf-8")
+        score_line = ""
+        score_number = 0
+        for line in match_report.splitlines():
+            if "Overall Match Score" in line:
+                score_line = line.strip()
+                # Extract number from e.g. "## Overall Match Score: 78%"
+                match = re.search(r"(\d+)%", line)
+                if match:
+                    score_number = int(match.group(1))
+                break
+        step.detail = f"{score_number}% match"
 
-    report_path = REPO_DIR / "match_report.txt"
-    report_path.write_text(match_report, encoding="utf-8")
+    # 5. Commit, push, and return to main
+    with Step("Saving to GitHub"):
+        commit_and_return(branch, company, role_title, score_line)
 
-    # Extract score line and numeric score
-    score_line = ""
-    score_number = 0
-    for line in match_report.splitlines():
-        if "Overall Match Score" in line:
-            score_line = line.strip()
-            # Extract number from e.g. "## Overall Match Score: 78%"
-            match = re.search(r"(\d+)%", line)
-            if match:
-                score_number = int(match.group(1))
-            break
-
-    print(f"  {score_line}")
-    print(f"\n{match_report}\n")
-
-    # 6. Commit, push, and return to main
-    print("  Committing and pushing...")
-    commit_and_return(branch, company, role_title, score_line)
-
-    # 7. Update Notion with clickable PDF link and score
+    # 6. Update Notion with clickable PDF link and score
     pdf_url = get_github_pdf_url(branch)
-    print(f"  Updating Notion — score: {score_number}%, PDF: {pdf_url}")
-    update_notion_results(job["page_id"], pdf_url, score_number, match_report)
+    with Step("Updating Notion"):
+        update_notion_results(job["page_id"], pdf_url, score_number, match_report)
 
-    print(f"  Done! Branch: {branch}")
+    print(f"  Resume: {pdf_url}")
+    print("  The full match report is in Notion.")
     status = f"Completed ({score_number}%)"
     if page_count > 1:
         status += f" — WARNING: {page_count} pages"
-    return status
+    return status, pdf_url
 
 
 def main(argv=None):
@@ -789,11 +854,11 @@ def main(argv=None):
 
     # Connect to Notion and fetch jobs
     init_notion_headers()
-    print("Querying Notion for jobs without resumes...")
+    print("Checking Notion for jobs that need a resume...", flush=True)
     jobs = query_jobs_without_resume()
 
     if not jobs:
-        print("No jobs found that need resumes. All caught up!")
+        print("No jobs need a resume. Add jobs in Notion (Company, Role Title, Job Link) and run this again.")
         return
 
     if args.company:
@@ -803,58 +868,59 @@ def main(argv=None):
     if args.limit:
         jobs = jobs[: args.limit]
 
-    print(f"Found {len(jobs)} job(s) to process.")
+    print(f"Found {len(jobs)} job(s) that need a resume. Each takes a minute or two.")
 
     results = []  # list of (company, role, status)
 
-    for job in jobs:
+    for number, job in enumerate(jobs, start=1):
         company = job.get("company", "?")
         role = job.get("role_title", "?")
         try:
-            status = process_job(job, experience_pool, base_tex, reference_tex, skip_manual=args.skip_manual, manual=args.manual)
-            results.append((company, role, status))
+            status, link = process_job(job, experience_pool, base_tex, reference_tex, skip_manual=args.skip_manual,
+                                       manual=args.manual, position=f"Job {number} of {len(jobs)}: ")
+            results.append((company, role, status, link))
         except KeyboardInterrupt:
             print("\n\n  Interrupted by user. Cleaning up...")
-            results.append((company, role, "Interrupted"))
+            results.append((company, role, "Interrupted", ""))
             return_to_main_clean()
             break
         except SetupError as e:
             print(f"\n  {e}\n  Stopping batch.")
-            results.append((company, role, "Failed — setup problem"))
+            results.append((company, role, "Failed — setup problem", ""))
             return_to_main_clean()
             break
         except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
             print(f"\n  API authentication error: {e}")
             print(f"  Check {api_key_var(args.account)} in .env. Stopping batch.")
-            results.append((company, role, "Failed — API auth error"))
+            results.append((company, role, "Failed — API auth error", ""))
             return_to_main_clean()
             break
         except anthropic.RateLimitError as e:
             print(f"\n  API rate limit or out of credits: {e}")
             print("  Check your Anthropic account balance. Stopping batch.")
-            results.append((company, role, "Failed — out of credits"))
+            results.append((company, role, "Failed — out of credits", ""))
             return_to_main_clean()
             break
         except requests.RequestException as e:
             print(f"\n  Notion API error: {e}")
-            results.append((company, role, "Failed — Notion API error"))
+            results.append((company, role, "Failed — Notion API error", ""))
             return_to_main_clean()
             continue
         except RuntimeError as e:
             print(f"\n  Git error: {e}")
-            results.append((company, role, "Failed — git error"))
+            results.append((company, role, "Failed — git error", ""))
             return_to_main_clean()
             continue
         except Exception as e:
             print(f"\n  Unexpected error: {e}")
-            results.append((company, role, f"Failed — {type(e).__name__}"))
+            results.append((company, role, f"Failed — {type(e).__name__}", ""))
             return_to_main_clean()
             continue
 
     # Mark remaining jobs that weren't reached
     processed_count = len(results)
     for job in jobs[processed_count:]:
-        results.append((job.get("company", "?"), job.get("role_title", "?"), "Not processed"))
+        results.append((job.get("company", "?"), job.get("role_title", "?"), "Not processed", ""))
 
     # Print summary table
     print(f"\n{'='*60}")
@@ -863,16 +929,15 @@ def main(argv=None):
     if results:
         col_w1 = max(len(r[0]) for r in results)
         col_w2 = max(len(r[1]) for r in results)
-        header = f"  {'Company':<{col_w1}}  {'Role':<{col_w2}}  Status"
-        print(header)
-        print(f"  {'-'*col_w1}  {'-'*col_w2}  {'-'*25}")
-        for company, role, status in results:
+        for company, role, status, link in results:
             print(f"  {company:<{col_w1}}  {role:<{col_w2}}  {status}")
+            if link:
+                print(f"  {'':<{col_w1}}  {'':<{col_w2}}  {link}")
 
-    completed = sum(1 for _, _, s in results if s.startswith("Completed"))
-    skipped = sum(1 for _, _, s in results if s.startswith("Skipped"))
-    failed = sum(1 for _, _, s in results if s.startswith("Failed"))
-    not_processed = sum(1 for _, _, s in results if s == "Not processed")
+    completed = sum(1 for r in results if r[2].startswith("Completed"))
+    skipped = sum(1 for r in results if r[2].startswith("Skipped"))
+    failed = sum(1 for r in results if r[2].startswith("Failed"))
+    not_processed = sum(1 for r in results if r[2] == "Not processed")
     print(f"\n  Completed: {completed} | Skipped: {skipped} | Failed: {failed}", end="")
     if not_processed:
         print(f" | Not processed: {not_processed}")
